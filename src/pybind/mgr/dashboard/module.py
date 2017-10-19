@@ -676,6 +676,28 @@ class Module(MgrModule):
                     toplevel_data=json.dumps(self._toplevel_data(), indent=2),
                     content_data=json.dumps(self._health(), indent=2)
                 )
+            
+            @cherrypy.expose
+            def mon(self):
+                template = env.get_template("mons.html")
+                return template.render(
+                    url_prefix = global_instance().url_prefix,
+                    ceph_version=global_instance().version,
+                    path_info=cherrypy.request.path_info,
+                    toplevel_data=json.dumps(self._toplevel_data(), indent=2),
+                    content_data=json.dumps(self._mon(), indent=2)
+                )
+
+            def _mon(self):
+                return {
+                    'mon_status':global_instance().get_sync_object(
+                        MonStatus).data
+                }
+
+            @cherrypy.expose
+            @cherrypy.tools.json_out()
+            def mon_data(self):
+                return self._mon()
 
             @cherrypy.expose
             def servers(self):

@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<script>
+
+        var epoch_y_data = [0,0,0,0,0,0,0,0,0,0];
+        var epoch_x_data = ['-','-','-','-','-','-','-','-','-','-'];
+
+        $(document).ready(function(){
+            // Pre-populated initial data at page load
+            var content_data = {{ content_data }};
+
+            rivets.formatters.mon_summary = function(mon_status) {
+                return mon_status.monmap.mons.length;
+            };
+
+            rivets.formatters.quo_summary = function(mon_status) {
+                return mon_status.quorum.length;
+            };
+
+
+            var draw_quorum_chart = function() {
+                var chart_labels = [], chart_data = [], quorum_array = content_data.mon_status.quorum;
+                var quorum_canvas = $("#quorum_chart").get(0).getContext("2d");
+
+                for(var i = 0; i < content_data.mon_status.monmap.mons.length; i++) {
+                    chart_labels.push(content_data.mon_status.monmap.mons[i].name);
+                    if($.inArray(content_data.mon_status.monmap.mons[i].rank, quorum_array) !== -1) {
+                        chart_data.push(1);
+                    }
+                    else {
+                        chart_data.push(0);
+                    }
+                }
+
+                var colors = ['#3366CC','#DC3912','#FF9900','#109618','#990099',
+                    '#3B3EAC','#0099C6','#DD4477','#66AA00','#B82E2E','#316395',
+                    '#994499','#22AA99','#AAAA11','#6633CC','#E67300','#8B0707',
+                    '#329262','#5574A6','#3B3EAC'];
+
+                var quorum_chart = new Chart(quorum_canvas, {
+
+                    type: 'horizontalBar',
+                    data: {
+                        labels: chart_labels,
+                        datasets: [{
+                            label: null,
+                            data: chart_data,
+                            backgroundColor: colors.splice(chart_labels.length),
+                            borderColor: colors.splice(chart_labels.length),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            xAxes : [{
+                                ticks : {
+                                    max : 1,
+                                    min : 0
+                                }
+                            }]
+                        },
+                        responsive: true,
+                        legend: {display: false},
+                        animation: {duration: 0}
+                    }
+                });
+            }
+
+
+
+            var draw_epoch_chart = function() {
+                var epoch_canvas = $("#epoch_chart").get(0).getContext("2d");
+
+                if(epoch_y_data[9] != content_data.mon_status.election_epoch){
+                    epoch_y_data.shift();
+                    epoch_y_data.push(content_data.mon_status.election_epoch);
+                    epoch_x_data.shift();
+                    var curr_time = (new Date()).toString();
+                    epoch_x_data.push(curr_time.split(' ')[4].substring(0,5));
+                }
+
+                var epoch_chart = new Chart(epoch_canvas, {
+
+                    type: 'line',
+                    data: {
+                        labels: epoch_x_data,
+                        datasets: [{
+                            label: 'Epoch-version',
+                            data: epoch_y_data
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            yAxes : [{
+                                ticks : {
+                                    min : epoch_y_data[0]
+                                }
+                            }]
+                        },
+                        responsive: true,
+                        legend: {display: false},
+                        animation: {duration: 0}
+                    }
+                });
+            }
+
+            draw_quorum_chart();
+            draw_epoch_chart();
+
+            rivets.bind($("div#content"), content_data);
+
+            var refresh = function() {
+                $.get("{{ url_prefix }}/mon_data/", function(data) {
+                    console.log('Hi printing');
+                    console.log(data);
+                    content_data.mons_from_server = data;
+                    draw_epoch_chart();
+                    draw_quorum_chart();
+                    setTimeout(refresh, 5000);
+                });
+            };
+            setTimeout(refresh, 5000);
+        });
+</script>
+
+<section class="content-header">
+    <h1>
+        Monitor Deamon
+    </h1>
+</section>
+
+<section class="content">
+    <div class="row">
+        <div class="col-sm-4">
+            <div class="box">
+                <div class="box-header">
+                    Quorum
+                </div>
+                <div class="box-body">
+                    <table class="ceph-chartbox">
+                        <tr>
+                            <td>
+                                <span style="font-size: 45px;">{mon_status | quo_summary} / {mon_status | mon_summary}</span>
+                            </td>
+                            <td >
+                                <div style="height:120px; width: 120px;">
+                                    <canvas id="quorum_chart" height="20px" width="20px"></canvas>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Monitors in<br>quorum</td>
+                            <td>1: In quorum<br>0: Outside quorum</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-8">
+            <div class="box">
+                <div class="box-header">
+                    Monitor map
+                </div>
+                <div class="box-body" style="text-align:center;">
+
+                    <table class="table table-condensed table-bordered">
+                    <thead>
+                    <tr>
+                        <th>Monitor name</th>
+                        <th>Public address</th>
+                        <th>Rank</th>
+                        <th>Address</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr rv-each-monitor="mons_from_server.mon_status.monmap.mons">
+                            <td>{monitor.name}</td>
+                            <td>{monitor.public_addr}</td>
+                            <td>{monitor.rank}</td>
+                            <td>{monitor.addr}</td>
+                        </tr>
+                    </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+
+        <div class="col-sm-5">
+            <div class="box">
+                <div class="box-header">
+                    Epoch-version
+                </div>
+                <div class="box-body">
+                    <table class="ceph-chartbox">
+                        <tr>
+                            <td >
+                                <div style="height:350px; width: 350px;">
+                                    <canvas id="epoch_chart" height="100px" width="100px"></canvas>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-7">
+            <div class="box">
+                <div class="box-header">
+                    Feature map
+                </div>
+                <div class="box-body" style="text-align:center;">
+
+                    <table class="table table-condensed table-bordered">
+                    <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Release</th>
+                        <th>Number</th>
+                        <th>Features</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr>
+                            <td>Client</td>
+                            <td>{mons_from_server.mon_status.feature_map.client.group.release}</td>
+                            <td>{mons_from_server.mon_status.feature_map.client.group.num}</td>
+                            <td>{mons_from_server.mon_status.feature_map.client.group.features}</td>
+                        </tr>
+                        <tr>
+                            <td>Monitor</td>
+                            <td>{mons_from_server.mon_status.feature_map.mon.group.release}</td>
+                            <td>{mons_from_server.mon_status.feature_map.mon.group.num}</td>
+                            <td>{mons_from_server.mon_status.feature_map.mon.group.features}</td>
+                        </tr>
+                        <tr>
+                            <td>OSD</td>
+                            <td>{mons_from_server.mon_status.feature_map.osd.group.release}</td>
+                            <td>{mons_from_server.mon_status.feature_map.osd.group.num}</td>
+                            <td>{mons_from_server.mon_status.feature_map.osd.group.features}</td>
+                        </tr>
+                    </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-header">
+                    Features
+                </div>
+                <div class="box-body" style="text-align:center;">
+                    <table class="ceph-chartbox">
+                        <tr>
+                            <td>
+                                <table class="table table-condensed table-bordered">
+                                <thead>
+                                <tr>
+                                    <th>Quorum monitors</th>
+                                </tr>
+                                </thead>
+
+                                <tbody>
+                                    <tr rv-each-monitor="mons_from_server.mon_status.features.quorum_mon">
+                                        <td>{monitor}</td>
+                                    </tr>
+                                </tbody>
+                                </table>
+                            </td>
+                            <td>
+                                <table class="table table-condensed table-bordered">
+                                <thead>
+                                <tr>
+                                    <th>Required monitors</th>
+                                </tr>
+                                </thead>
+
+                                <tbody>
+                                    <tr rv-each-monitor="mons_from_server.mon_status.features.required_mon">
+                                        <td>{monitor}</td>
+                                    </tr>
+                                </tbody>
+                                </table>
+                            </td>
+                            <td>
+                                <table class="table table-condensed table-bordered">
+                                <thead>
+                                <tr>
+                                    <th>Quorum connection</th>
+                                    <th>Required connection</th>
+                                </tr>
+                                </thead>
+
+                                <tbody>
+                                    <tr>
+                                        <td>{mons_from_server.mon_status.features.quorum_con}</td>
+                                        <td>{mons_from_server.mon_status.features.required_con}</td>
+                                    </tr>
+                                </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<!-- /.content -->
+
+{% endblock %}
